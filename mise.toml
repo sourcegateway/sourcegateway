@@ -1,0 +1,18 @@
+# Source Gateway <https://sourcegateway.dev>
+# Copyright The Source Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+
+[env]
+NONO_NO_UPDATE_CHECK = "1"
+
+[settings]
+lockfile = true
+
+[tools]
+go = "1.27.0"
+helm = "3.18.5"
+kubeconform = "0.8.0"
+overmind = "2.5.1"
+rclone = "1.71.1"
+
+"github:seaweedfs/seaweedfs" = { version = "4.44", filter_bins = "weed" }

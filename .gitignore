@@ -1,0 +1,11 @@
+# Source Gateway <https://sourcegateway.dev>
+# Copyright The Source Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+.DS_Store
+.env
+bin/
+coverage.out
+dist/
+tmp/
+*.log
+*.sock

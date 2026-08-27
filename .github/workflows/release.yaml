@@ -1,0 +1,98 @@
+# Source Gateway <https://sourcegateway.dev>
+# Copyright The Source Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+name: Release
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+  attestations: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes tmux
+      - name: Install pinned development tools
+        run: make setup-tools
+      - name: Validate release source
+        run: |
+          make generate
+          git diff --exit-code
+          make precommit test lint build helm
+          GOPROXY=off make e2e
+      - name: Record immutable build metadata
+        run: |
+          echo "BUILD_DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >>"$GITHUB_ENV"
+          echo "COMMIT_DATE=$(git show -s --format=%cI "$GITHUB_SHA")" >>"$GITHUB_ENV"
+      - uses: anchore/sbom-action/download-syft@f8bdd1d8ac5e901a77a92f111440fdb1b593736b # v0.20.6
+        with:
+          syft-version: v1.29.0
+      - uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
+        with:
+          cosign-release: v2.5.2
+      - name: Install OCI tools
+        run: |
+          go install github.com/podplane/ocimage@v1.0.9
+          go install github.com/google/go-containerregistry/cmd/crane@v0.20.6
+      - name: Authenticate to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | crane auth login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Build and push multi-architecture image
+        id: image
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          make image \
+            VERSION="$VERSION" \
+            BUILD_DATE="${{ env.BUILD_DATE }}" \
+            COMMIT_HASH="${{ github.sha }}" \
+            COMMIT_DATE="${{ env.COMMIT_DATE }}" \
+            COMMIT_BRANCH="${{ github.ref_name }}" \
+            IMAGE_TAGS="ghcr.io/sourcegateway/sourcegateway:$VERSION" \
+            IMAGE_PUSH=true \
+            IMAGE_SBOM=true
+          digest=$(crane digest "ghcr.io/sourcegateway/sourcegateway:$VERSION")
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+      - name: Sign image digest
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: cosign sign --yes "ghcr.io/sourcegateway/sourcegateway@$DIGEST"
+      - name: Attest image digest
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ghcr.io/sourcegateway/sourcegateway
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+      - name: Package and publish Helm chart
+        id: chart
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          mkdir -p dist/chart
+          helm package deploy/helm --destination dist/chart --version "$version" --app-version "$GITHUB_REF_NAME"
+          chart="dist/chart/sourcegateway-$version.tgz"
+          syft "$chart" -o "spdx-json=dist/chart/sourcegateway-$version.spdx.json"
+          helm push "$chart" oci://ghcr.io/sourcegateway/charts
+          digest=$(crane digest "ghcr.io/sourcegateway/charts/sourcegateway:$version")
+          cosign sign --yes "ghcr.io/sourcegateway/charts/sourcegateway@$digest"
+          cosign attest --yes --type spdxjson --predicate "dist/chart/sourcegateway-$version.spdx.json" "ghcr.io/sourcegateway/charts/sourcegateway@$digest"
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+      - name: Attest Helm chart digest
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ghcr.io/sourcegateway/charts/sourcegateway
+          subject-digest: ${{ steps.chart.outputs.digest }}
+          push-to-registry: true

@@ -1,0 +1,25 @@
+# Source Gateway <https://sourcegateway.dev>
+# Copyright The Source Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Chainguard Git 2.55.0-r4: non-root runtime with HTTPS transport and CA roots.
+FROM cgr.dev/chainguard/git@sha256:a0c528fc6d95704bb890e91448c2e25bf7193bb0e56559be8620180a675b6930
+
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION=dev
+ARG BUILD_DATE=unknown
+ARG COMMIT_HASH=unknown
+
+LABEL org.opencontainers.image.title="Source Gateway" \
+      org.opencontainers.image.description="A Kubernetes-native authenticated gateway for Git and object storage" \
+      org.opencontainers.image.source="https://github.com/sourcegateway/sourcegateway" \
+      org.opencontainers.image.documentation="https://sourcegateway.dev" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${COMMIT_HASH}"
+
+COPY --chmod=555 bin/${TARGETOS}_${TARGETARCH}/sourcegateway /sourcegateway
+
+ENTRYPOINT ["/sourcegateway"]

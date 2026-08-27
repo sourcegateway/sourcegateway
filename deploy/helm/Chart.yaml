@@ -1,0 +1,13 @@
+# Source Gateway <https://sourcegateway.dev>
+# Copyright The Source Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: v2
+name: sourcegateway
+description: Source Gateway is a Git and object storage pull-through cache and write proxy for Kubernetes
+type: application
+version: 0.1.0
+appVersion: dev
+kubeVersion: ">=1.37.0-0"
+home: https://sourcegateway.dev
+sources:
+  - https://github.com/sourcegateway/sourcegateway

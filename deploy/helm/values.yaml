@@ -1,0 +1,97 @@
+# Source Gateway <https://sourcegateway.dev>
+# Copyright The Source Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Enable only when this Helm release should own the CRDs.
+crds:
+  enabled: false
+
+# Disable to install or upgrade only the CRDs.
+enabled: true
+
+image:
+  repository: ghcr.io/sourcegateway/sourcegateway
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+extraArgs: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 443
+  annotations: {}
+
+config:
+  tokenAudience: sourcegateway.dev
+  objectCacheCapacity: 20Gi
+  maxObjectSize: 15Mi
+  credentialsDirectory: /var/run/sourcegateway/secrets
+  githubUserAnnotation: sourcegateway.dev/github-user
+  listenAddress: ":8443"
+  metricsAddress: ":9443"
+  storageDirectory: /var/lib/sourcegateway
+  credentials:
+    gitRepository: {}
+    objectStorageBucket: {}
+
+# The selected source must expose a file named encryption-key at its volume root.
+encryptionKey:
+  secretProviderClass: ""
+  secretName: ""
+
+# The selected source must expose tls.crt and tls.key at its volume root.
+servingTLS:
+  secretProviderClass: ""
+  secretName: ""
+  certificateFile: tls.crt
+  privateKeyFile: tls.key
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessModes: [ReadWriteOnce]
+  size: 30Gi
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  # UID 0 is mapped to a unique unprivileged host UID by spec.hostUsers=false.
+  runAsNonRoot: false
+  runAsUser: 0
+  runAsGroup: 0
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+  readOnlyRootFilesystem: true
+  seccompProfile:
+    type: RuntimeDefault
+
+networkPolicy:
+  enabled: true
+  # Empty permits application ingress from all namespaces.
+  ingressFrom: []
+  # Empty keeps the operational port private except for node-originated probes.
+  metricsIngressFrom: []
+
+nodeSelector:
+  kubernetes.io/os: linux
+tolerations: []
+affinity: {}
+priorityClassName: ""

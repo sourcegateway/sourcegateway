@@ -1,0 +1,26 @@
+# Source Gateway <https://sourcegateway.dev>
+# Copyright The Source Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Example values covering every supported credential mount form.
+image:
+  tag: v0.1.0
+encryptionKey:
+  secretProviderClass: sourcegateway-encryption-key
+servingTLS:
+  secretProviderClass: sourcegateway-serving-tls
+config:
+  credentials:
+    gitRepository:
+      example-github:
+        kind: githubApp
+        namespaces: [agents]
+        secretProviderClass: example-github
+    objectStorageBucket:
+      example-aws:
+        kind: awsAccessKey
+        namespaces: [agents, builds]
+        secretName: example-aws
+      example-gcs:
+        kind: gcsDefault
+        namespaces: [agents]

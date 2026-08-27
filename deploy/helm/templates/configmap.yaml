@@ -1,0 +1,12 @@
+{{/* Source Gateway <https://sourcegateway.dev> | Copyright The Source Gateway Authors | SPDX-License-Identifier: Apache-2.0 */}}
+{{- if .Values.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sourcegateway.fullname" . }}
+  labels:
+    {{- include "sourcegateway.labels" . | nindent 4 }}
+data:
+  config.jsonc: |
+    {{- include "sourcegateway.runtimeConfig" . | nindent 4 }}
+{{- end }}

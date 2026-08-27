@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Source Gateway <https://sourcegateway.dev>
+# Copyright The Source Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+set -eo pipefail
+export NONO_NO_UPDATE_CHECK=1
+
+exec make precommit

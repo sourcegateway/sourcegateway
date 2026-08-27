@@ -1,0 +1,21 @@
+{{/* Source Gateway <https://sourcegateway.dev> | Copyright The Source Gateway Authors | SPDX-License-Identifier: Apache-2.0 */}}
+{{- if .Values.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sourcegateway.fullname" . }}
+  labels:
+    {{- include "sourcegateway.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "sourcegateway.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: https
+      port: {{ .Values.service.port }}
+      targetPort: https
+{{- end }}
