@@ -79,13 +79,13 @@ servingTLS:
 config:
   credentials:
     gitRepository:
-      demo:
+      git-demo:
         kind: githubUser
         namespaces: [default]
         origin: http://git-server.sourcegateway.svc:23232
         secretName: sourcegateway-demo-git
     objectStorageBucket:
-      demo:
+      s3-demo:
         kind: awsAccessKey
         namespaces: [default]
         origin: http://seaweedfs.sourcegateway.svc:8333
@@ -165,7 +165,7 @@ spec:
     endpoint: http://seaweedfs.sourcegateway.svc:8333
     region: us-east-1
     bucket: demo
-    credential: demo
+    credential: s3-demo
   cache:
     capacity: 100Mi
     ttl: 5m
@@ -325,7 +325,7 @@ metadata:
 spec:
   upstream:
     url: http://git-server.sourcegateway.svc:23232/hello.git
-    credential: demo
+    credential: git-demo
   mirror:
     refreshInterval: 5s
     maxStaleness: 1m
