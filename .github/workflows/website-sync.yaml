@@ -1,0 +1,37 @@
+# Source Gateway <https://sourcegateway.dev>
+# Copyright The Source Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Trigger Website Deployment
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  trigger:
+    name: Trigger Website Deployment
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: 4746472
+          private-key: ${{ secrets.WEBSITE_SYNC_APP_KEY }}
+          owner: sourcegateway
+          repositories: website
+      - name: Trigger website deploy workflow
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'sourcegateway',
+              repo: 'website',
+              workflow_id: 'deploy.yml',
+              ref: 'main',
+            });
