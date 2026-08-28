@@ -187,7 +187,7 @@ func (r *Reconciler) reconcileGit(ctx context.Context, repository *v1alpha1.GitR
 	}
 	setCondition(&status.Conditions, repository.Generation, "PolicyReady", true, "Compiled")
 	status.PolicyRevision = compiled.Revision()
-	authHeader, err := credential.GitAuthorization(ctx, r.Config, repository.Spec.Upstream.Credential, repository.Namespace, repository.Spec.Upstream.URL)
+	authHeader, err := credential.GitAuthorization(ctx, r.Config, repository.Spec.Upstream.Credential, repository.Namespace, repository.Spec.Upstream.URL, r.AllowedInsecureUpstreams)
 	if err != nil {
 		setCondition(&status.Conditions, repository.Generation, "CredentialsReady", false, "CredentialsInvalid")
 		setCondition(&status.Conditions, repository.Generation, "UpstreamReady", false, "Blocked")

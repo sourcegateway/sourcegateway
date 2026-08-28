@@ -69,7 +69,7 @@ type GitRepositorySpec struct {
 
 // GitUpstream identifies the repository and credential used to reach it.
 type GitUpstream struct {
-	// +kubebuilder:validation:Pattern=`^https://.+`
+	// +kubebuilder:validation:Pattern=`^https?://.+`
 	URL string `json:"url"`
 	// +kubebuilder:validation:MinLength=1
 	Credential string `json:"credential"`

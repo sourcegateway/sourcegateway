@@ -6,7 +6,7 @@ description: "Run a disposable Source Gateway installation on a local Kind clust
 
 # Getting Started
 
-This guide creates a disposable Source Gateway installation on a local [Kind](https://kind.sigs.k8s.io/) cluster. You need Kind, Helm, kubectl, curl, and OpenSSL. Kind must use Kubernetes 1.37 on a Linux 6.3+ host or VM with Pod user-namespace support.
+This guide creates a disposable Source Gateway installation on a local [Kind](https://kind.sigs.k8s.io/) cluster, then demo's using both an object storage bucket and a Git repository. You need Kind, Helm, kubectl, curl, and OpenSSL. Kind must use Kubernetes 1.37 on a Linux 6.3+ host or VM with Pod user-namespace support.
 
 ## Create the cluster
 
@@ -25,7 +25,7 @@ docker exec "$(kind get nodes --name sourcegateway)" \
 
 ## Create test secrets
 
-For this local installation, create a short-lived self-signed certificate and native Kubernetes Secrets:
+For this local installation, create a short-lived self-signed certificate and native Kubernetes Secrets. The Git credential files are intentionally empty because the disposable Git server uses anonymous access:
 
 ```console
 openssl rand -base64 32 | kubectl -n sourcegateway create secret generic \
@@ -40,9 +40,15 @@ openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 \
 kubectl -n sourcegateway create secret tls sourcegateway-serving-tls \
   --cert="$WORK/tls.crt" --key="$WORK/tls.key"
 
+kubectl create configmap sourcegateway-demo-ca --from-file=ca.crt="$WORK/tls.crt"
+
 kubectl -n sourcegateway create secret generic sourcegateway-demo-s3 \
   --from-literal=access-key-id=demo \
   --from-literal=secret-access-key=demo
+
+kubectl -n sourcegateway create secret generic sourcegateway-demo-git \
+  --from-literal=username= \
+  --from-literal=token=
 ```
 
 ## Install Source Gateway
@@ -65,12 +71,19 @@ networkPolicy:
   enabled: false
 extraArgs:
   - --allow-insecure-upstream=http://seaweedfs.sourcegateway.svc:8333
+  - --allow-insecure-upstream=http://git-server.sourcegateway.svc:23232
 encryptionKey:
   secretName: sourcegateway-encryption-key
 servingTLS:
   secretName: sourcegateway-serving-tls
 config:
   credentials:
+    gitRepository:
+      demo:
+        kind: githubUser
+        namespaces: [default]
+        origin: http://git-server.sourcegateway.svc:23232
+        secretName: sourcegateway-demo-git
     objectStorageBucket:
       demo:
         kind: awsAccessKey
@@ -83,20 +96,6 @@ helm upgrade --install sourcegateway "$CHART" \
   --version "$VERSION" \
   --namespace sourcegateway \
   --values "$WORK/values.yaml"
-```
-
-Run a single disposable SeaweedFS Pod as the demo's S3 upstream:
-
-```console
-kubectl -n sourcegateway run seaweedfs \
-  --image=chrislusf/seaweedfs:4.44 \
-  --port=8333 -- \
-  mini -dir=/tmp/seaweedfs -ip=127.0.0.1 -ip.bind=0.0.0.0 \
-  -s3.port=8333 -filer.port=8888 -master.port=9333 -volume.port=18081 \
-  -master.telemetry=false
-
-kubectl -n sourcegateway expose pod seaweedfs \
-  --name=seaweedfs --port=8333
 ```
 
 Wait for the Deployment:
@@ -121,7 +120,21 @@ curl --cacert "$WORK/tls.crt" https://localhost:9443/readyz
 
 The response is `ok`.
 
-## Try an object round trip
+## Test object storage
+
+Run a single disposable SeaweedFS Pod as the demo's S3 upstream:
+
+```console
+kubectl -n sourcegateway run seaweedfs \
+  --image=chrislusf/seaweedfs:4.44 \
+  --port=8333 -- \
+  mini -dir=/tmp/seaweedfs -ip=127.0.0.1 -ip.bind=0.0.0.0 \
+  -s3.port=8333 -filer.port=8888 -master.port=9333 -volume.port=18081 \
+  -master.telemetry=false
+
+kubectl -n sourcegateway expose pod seaweedfs \
+  --name=seaweedfs --port=8333
+```
 
 Forward SeaweedFS to the host, then create its authoritative bucket and seed one object directly upstream:
 
@@ -170,8 +183,6 @@ BUCKET=$(kubectl get objectstoragebucket demo -o jsonpath='{.status.bucketName}'
 Create an rclone Pod with the test CA and a projected Source Gateway token. It receives no SeaweedFS credentials:
 
 ```console
-kubectl create configmap sourcegateway-demo-ca --from-file=ca.crt="$WORK/tls.crt"
-
 kubectl apply -f - <<'EOF'
 apiVersion: v1
 kind: ServiceAccount
@@ -244,6 +255,171 @@ curl -fsS http://localhost:8333/demo/second.txt
 ```
 
 The output shows both changes made through Source Gateway.
+
+## Test Git
+
+Run a disposable [Soft Serve](https://github.com/charmbracelet/soft-serve) Git server with anonymous administration enabled for this isolated test cluster:
+
+```console
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: git-server
+  namespace: sourcegateway
+  labels:
+    app: git-server
+spec:
+  containers:
+    - name: git
+      image: charmcli/soft-serve:v0.12.2
+      env:
+        - { name: SOFT_SERVE_DEFAULT_REPO, value: hello }
+        - { name: SOFT_SERVE_ANON_ACCESS, value: admin-access }
+        - { name: SOFT_SERVE_ALLOW_KEYLESS, value: "true" }
+      ports:
+        - { name: http, containerPort: 23232 }
+      readinessProbe:
+        tcpSocket: { port: http }
+  restartPolicy: Never
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: git-server
+  namespace: sourcegateway
+spec:
+  selector:
+    app: git-server
+  ports:
+    - { name: http, port: 23232, targetPort: http }
+EOF
+
+kubectl -n sourcegateway wait --for=condition=Ready pod/git-server --timeout=2m
+```
+
+Seed its authoritative repository directly with one file:
+
+```console
+kubectl -n sourcegateway exec git-server -- sh -c '
+  set -eu
+  WORK=$(mktemp -d)
+  git -C "$WORK" init -b main
+  printf "hello from upstream\n" >"$WORK/hello.txt"
+  git -C "$WORK" add hello.txt
+  git -C "$WORK" -c user.name=Demo -c user.email=demo@example.invalid \
+    commit -m "Add hello file"
+  git -C "$WORK" push http://localhost:23232/hello.git main
+'
+```
+
+Expose the repository through Source Gateway. The policy grants only the demo ServiceAccount access and rejects forced pushes and branch deletion:
+
+```console
+kubectl apply -f - <<'EOF'
+apiVersion: sourcegateway.dev/v1alpha1
+kind: GitRepository
+metadata:
+  name: hello
+  namespace: default
+spec:
+  upstream:
+    url: http://git-server.sourcegateway.svc:23232/hello.git
+    credential: demo
+  mirror:
+    refreshInterval: 5s
+    maxStaleness: 1m
+  authorization:
+    rules:
+      - name: read
+        operations: [git.read]
+        allow: 'sa.namespace == "default" && sa.name == "sourcegateway-git-demo"'
+      - name: push
+        operations: [git.push]
+        allow: >-
+          sa.namespace == "default" &&
+          sa.name == "sourcegateway-git-demo" &&
+          !request.force && !request.delete
+EOF
+
+kubectl wait --for=condition=Ready gitrepository/hello --timeout=2m
+```
+
+Create a Git client Pod with the test CA and a projected Source Gateway token. It receives no upstream Git credentials:
+
+```console
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sourcegateway-git-demo
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sourcegateway-git-demo
+spec:
+  serviceAccountName: sourcegateway-git-demo
+  automountServiceAccountToken: false
+  containers:
+    - name: git
+      image: alpine/git:2.49.1
+      command: ["/bin/sh", "-c", "sleep 1d"]
+      workingDir: /work
+      volumeMounts:
+        - { name: token, mountPath: /var/run/sourcegateway, readOnly: true }
+        - { name: ca, mountPath: /etc/sourcegateway, readOnly: true }
+  volumes:
+    - name: token
+      projected:
+        defaultMode: 0400
+        sources:
+          - serviceAccountToken:
+              path: token
+              audience: sourcegateway.dev
+              expirationSeconds: 3600
+    - name: ca
+      configMap:
+        name: sourcegateway-demo-ca
+EOF
+
+kubectl wait --for=condition=Ready pod/sourcegateway-git-demo --timeout=2m
+kubectl exec -it sourcegateway-git-demo -- /bin/sh
+```
+
+Inside the container, clone through Source Gateway, read the existing file, add another, and push it back:
+
+```console
+TOKEN=$(cat /var/run/sourcegateway/token)
+export GIT_CONFIG_COUNT=2
+export GIT_CONFIG_KEY_0=http.extraHeader
+export GIT_CONFIG_VALUE_0="Authorization: Bearer $TOKEN"
+export GIT_CONFIG_KEY_1=http.sslCAInfo
+export GIT_CONFIG_VALUE_1=/etc/sourcegateway/ca.crt
+
+git clone https://sourcegateway.sourcegateway.svc/git/default/hello.git
+cd hello
+cat hello.txt
+git config user.name Demo
+git config user.email demo@example.invalid
+printf 'added through Source Gateway\n' >second.txt
+git add second.txt
+git commit -m 'Add second file'
+git push origin main
+exit
+```
+
+Finally, read the authoritative commit directly from the Git server:
+
+```console
+kubectl -n sourcegateway exec git-server -- sh -c '
+  WORK=$(mktemp -d)
+  git clone --quiet http://localhost:23232/hello.git "$WORK/verify"
+  cat "$WORK/verify/second.txt"
+'
+```
+
+The output is `added through Source Gateway`.
 
 ## Clean up
 

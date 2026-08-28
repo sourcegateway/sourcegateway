@@ -271,4 +271,8 @@ func TestValidateCredentialOriginDefaultsKnownServices(t *testing.T) {
 			t.Errorf("validateCredentialOrigin(%q) = %q, %v; want %q", kind, credential.Origin, err, want)
 		}
 	}
+	credential := Credential{Kind: "githubUser", Origin: "HTTP://Git.Example:80"}
+	if err := validateCredentialOrigin("gitRepository", &credential); err != nil || credential.Origin != "http://git.example" {
+		t.Errorf("validateCredentialOrigin(HTTP Git) = %q, %v", credential.Origin, err)
+	}
 }

@@ -12,6 +12,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -82,7 +84,35 @@ func TestGitAuthorizationRejectsCredentialOriginMismatch(t *testing.T) {
 	cfg := &config.Config{Credentials: config.Credentials{GitRepository: map[string]config.Credential{
 		"github": {Kind: "githubUser", Namespaces: []string{"agents"}, Origin: "https://github.com"},
 	}}}
-	if _, err := GitAuthorization(context.Background(), cfg, "github", "agents", "https://attacker.example/repository.git"); err == nil || !strings.Contains(err.Error(), "not permitted") {
+	if _, err := GitAuthorization(context.Background(), cfg, "github", "agents", "https://attacker.example/repository.git", nil); err == nil || !strings.Contains(err.Error(), "not permitted") {
 		t.Fatalf("mismatched origin returned %v", err)
+	}
+}
+
+// TestGitAuthorizationRequiresHTTPSOrExplicitOrigin checks the development-only HTTP opt-in.
+func TestGitAuthorizationRequiresHTTPSOrExplicitOrigin(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, "github")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]string{"username": "demo", "token": "token"} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(value), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := &config.Config{CredentialsDirectory: root, Credentials: config.Credentials{GitRepository: map[string]config.Credential{
+		"github": {Kind: "githubUser", Namespaces: []string{"agents"}, Origin: "http://git.example"},
+	}}}
+	upstream := "http://git.example/repository.git"
+	if _, err := GitAuthorization(t.Context(), cfg, "github", "agents", upstream, nil); err == nil || !strings.Contains(err.Error(), "must use HTTPS") {
+		t.Fatalf("unapproved HTTP upstream returned %v", err)
+	}
+	if _, err := GitAuthorization(t.Context(), cfg, "github", "agents", upstream, []string{"http://other.example"}); err == nil || !strings.Contains(err.Error(), "must use HTTPS") {
+		t.Fatalf("wrong approved HTTP origin returned %v", err)
+	}
+	authorization, err := GitAuthorization(t.Context(), cfg, "github", "agents", upstream, []string{"http://git.example"})
+	if err != nil || !strings.HasPrefix(authorization, "Basic ") {
+		t.Fatalf("approved HTTP upstream authorization = %q, %v", authorization, err)
 	}
 }

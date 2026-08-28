@@ -179,9 +179,6 @@ func validateCredentialOrigin(group string, credential *Credential) error {
 	if err != nil {
 		return errors.New("origin must be an HTTP or HTTPS origin")
 	}
-	if group == "gitRepository" && !strings.HasPrefix(origin, "https://") {
-		return errors.New("git origin must use HTTPS")
-	}
 	credential.Origin = origin
 	return nil
 }
