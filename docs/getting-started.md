@@ -56,11 +56,9 @@ kubectl -n sourcegateway create secret generic sourcegateway-demo-git \
 CRDs are disabled by default so they can have an independent lifecycle. Install the chart twice, using ephemeral storage for this test. This local Kind setup also disables the chart's ingress NetworkPolicy because Kind networking blocks return traffic to the user-namespaced Pod when that policy is installed; keep the policy enabled in production:
 
 ```console
-VERSION=0.1.0
 CHART=oci://ghcr.io/sourcegateway/charts/sourcegateway
 
 helm upgrade --install sourcegateway-crds "$CHART" \
-  --version "$VERSION" \
   --namespace sourcegateway \
   --set crds.enabled=true --set enabled=false
 
@@ -93,7 +91,6 @@ config:
 EOF
 
 helm upgrade --install sourcegateway "$CHART" \
-  --version "$VERSION" \
   --namespace sourcegateway \
   --values "$WORK/values.yaml"
 ```
