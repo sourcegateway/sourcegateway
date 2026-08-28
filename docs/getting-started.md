@@ -142,7 +142,8 @@ PORT_FORWARD=$!
 curl -sS --retry 30 --retry-delay 1 --retry-connrefused \
   -o /dev/null http://localhost:8333
 
-curl -fsS -X PUT http://localhost:8333/demo
+curl -fsS -I http://localhost:8333/demo >/dev/null 2>&1 || \
+  curl -fsS -X PUT http://localhost:8333/demo
 printf 'hello from upstream\n' | \
   curl -fsS -X PUT --data-binary @- http://localhost:8333/demo/hello.txt
 ```
