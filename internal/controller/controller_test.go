@@ -110,6 +110,9 @@ func TestBindBackendUsesGCSDefaultEndpoint(t *testing.T) {
 func TestSetConditionPreservesTransitionTime(t *testing.T) {
 	var conditions []metav1.Condition
 	setCondition(&conditions, 1, "Ready", true, "Serving")
+	if want := "The source is ready to serve requests."; conditions[0].Message != want {
+		t.Fatalf("condition message = %q; want %q", conditions[0].Message, want)
+	}
 	first := conditions[0].LastTransitionTime
 	setCondition(&conditions, 1, "Ready", true, "Serving")
 	if !conditions[0].LastTransitionTime.Equal(&first) {

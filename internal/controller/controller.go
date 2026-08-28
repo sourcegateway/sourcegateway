@@ -35,8 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-const conditionMessage = "See Source Gateway logs for details."
-
 const mirrorMetadataFile = ".sourcegateway-mirror.json"
 
 // mirrorMetadata records the authoritative identity and age of an installed mirror.
@@ -632,7 +630,41 @@ func setCondition(conditions *[]metav1.Condition, generation int64, conditionTyp
 	if ready {
 		status = metav1.ConditionTrue
 	}
-	meta.SetStatusCondition(conditions, metav1.Condition{Type: conditionType, Status: status, ObservedGeneration: generation, Reason: reason, Message: conditionMessage})
+	meta.SetStatusCondition(conditions, metav1.Condition{Type: conditionType, Status: status, ObservedGeneration: generation, Reason: reason, Message: conditionMessage(reason)})
+}
+
+// conditionMessage describes condition reasons without exposing provider or credential details.
+func conditionMessage(reason string) string {
+	switch reason {
+	case "Compiled":
+		return "Authorization policy compiled successfully."
+	case "PolicyInvalid":
+		return "An authorization rule has invalid operations or an invalid CEL allow expression."
+	case "Loaded":
+		return "The selected credential is available."
+	case "CredentialsInvalid":
+		return "The selected credential is missing, unavailable to this namespace, or has unreadable required files."
+	case "ConfigurationInvalid":
+		return "The backend endpoint, provider, or region is invalid or not permitted by the selected credential."
+	case "Blocked":
+		return "A prerequisite is not ready; inspect the other conditions on this resource."
+	case "MirrorCurrent":
+		return "The Git mirror is current."
+	case "Available":
+		return "The upstream bucket is available."
+	case "UpstreamUnavailable":
+		return "Source Gateway could not refresh or verify the upstream; check connectivity, authentication, and upstream availability."
+	case "ServingStale":
+		return "Serving the last usable Git mirror because its refresh failed."
+	case "Serving":
+		return "The source is ready to serve requests."
+	case "BucketNameCollision":
+		return "The derived bucket name collides with another ObjectStorageBucket; rename one of the resources."
+	case "CacheInvalid":
+		return "Cache capacity and TTL must be positive, and capacity cannot exceed the global object cache capacity."
+	default:
+		return "Source Gateway reported this condition."
+	}
 }
 
 // updateGitStatus writes status only when it has changed.

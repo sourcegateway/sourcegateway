@@ -15,6 +15,14 @@ kind create cluster --name sourcegateway --image kindest/node:v1.37.0
 kubectl create namespace sourcegateway
 ```
 
+Kind currently needs an additional sysfs mount before it can start Pods that
+use user namespaces. For a Docker-backed Kind cluster, prepare the node:
+
+```console
+docker exec "$(kind get nodes --name sourcegateway)" \
+  sh -c 'mkdir -p /mnt/sysfs && (mountpoint -q /mnt/sysfs || mount -t sysfs none /mnt/sysfs)'
+```
+
 ## Create test secrets
 
 For this local installation, create a short-lived self-signed certificate and native Kubernetes Secrets:
@@ -39,7 +47,7 @@ kubectl -n sourcegateway create secret generic sourcegateway-demo-s3 \
 
 ## Install Source Gateway
 
-CRDs are disabled by default so they can have an independent lifecycle. Install the chart twice, using ephemeral storage for this test:
+CRDs are disabled by default so they can have an independent lifecycle. Install the chart twice, using ephemeral storage for this test. This local Kind setup also disables the chart's ingress NetworkPolicy because Kind networking blocks return traffic to the user-namespaced Pod when that policy is installed; keep the policy enabled in production:
 
 ```console
 VERSION=0.1.0
@@ -52,6 +60,8 @@ helm upgrade --install sourcegateway-crds "$CHART" \
 
 cat >"$WORK/values.yaml" <<'EOF'
 persistence:
+  enabled: false
+networkPolicy:
   enabled: false
 extraArgs:
   - --allow-insecure-upstream=http://seaweedfs.sourcegateway.svc:8333
@@ -119,7 +129,8 @@ Forward SeaweedFS to the host, then create its authoritative bucket and seed one
 kubectl -n sourcegateway port-forward service/seaweedfs 8333:8333 \
   >/tmp/sourcegateway-seaweedfs.log 2>&1 &
 PORT_FORWARD=$!
-until curl -sS -o /dev/null http://localhost:8333; do sleep 1; done
+curl -sS --retry 30 --retry-delay 1 --retry-connrefused \
+  -o /dev/null http://localhost:8333
 
 curl -fsS -X PUT http://localhost:8333/demo
 printf 'hello from upstream\n' | \
