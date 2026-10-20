@@ -6,8 +6,9 @@
 {{- if not (or $encryptionSPC $encryptionSecret) -}}{{ fail "encryptionKey must set secretProviderClass or secretName" }}{{- end -}}
 {{- $tlsSPC := default "" .Values.servingTLS.secretProviderClass -}}
 {{- $tlsSecret := default "" .Values.servingTLS.secretName -}}
-{{- if and $tlsSPC $tlsSecret -}}{{ fail "servingTLS must set only one of secretProviderClass or secretName" }}{{- end -}}
-{{- if not (or $tlsSPC $tlsSecret) -}}{{ fail "servingTLS must set secretProviderClass or secretName" }}{{- end -}}
+{{- $tlsProjected := default dict .Values.servingTLS.projected -}}
+{{- if ne (len (compact (list $tlsSPC $tlsSecret $tlsProjected))) 1 -}}{{ fail "servingTLS must set exactly one of secretProviderClass, secretName or projected" }}{{- end -}}
+{{- if and $tlsProjected (empty $tlsProjected.sources) -}}{{ fail "servingTLS.projected.sources must not be empty" }}{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -103,6 +104,11 @@ spec:
             driver: secrets-store.csi.k8s.io
             readOnly: true
             volumeAttributes: { secretProviderClass: {{ $tlsSPC | quote }} }
+          {{- else if $tlsProjected }}
+          {{- $projection := deepCopy $tlsProjected }}
+          {{- if not (hasKey $projection "defaultMode") }}{{- $_ := set $projection "defaultMode" 256 }}{{- end }}
+          projected:
+            {{- toYaml $projection | nindent 12 }}
           {{- else }}
           secret:
             secretName: {{ $tlsSecret | quote }}

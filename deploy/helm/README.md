@@ -6,13 +6,17 @@ Kubernetes 1.37 and Linux nodes supporting Pod user namespaces are required.
 
 ## Install
 
-For the encryption key, serving TLS, and each file-backed credential, configure
+For the encryption key and each file-backed credential, configure
 exactly one `secretProviderClass` or `secretName`. Secrets Store CSI is preferred;
 enable automatic rotation and configure files with mode `0400`. Native
 Kubernetes Secrets are also mounted with mode `0400`. When using native Secrets,
 enable Kubernetes encryption at rest because their contents are stored in etcd.
 Both volume types are mounted whole, without `subPath`, so file updates remain
 visible.
+
+For serving TLS, configure exactly one of `servingTLS.secretProviderClass`,
+`servingTLS.secretName`, or `servingTLS.projected` (a Kubernetes
+`ProjectedVolumeSource`, defaulting to mode `0400`).
 
 The encryption source must publish `encryption-key` containing standard base64
 for 32 bytes. The TLS source must publish `tls.crt` and `tls.key`. Credential
@@ -44,8 +48,8 @@ should own both the application and its CRDs.
 Runtime configuration is strict JSON rendered into a ConfigMap. Credentials may
 declare a trusted `origin`; GitHub, GCS, and regional AWS S3 have safe defaults.
 Selected resources cannot send those credentials elsewhere. The chart-only
-`secretProviderClass` and `secretName` keys are intentionally removed from that
-JSON. Config and mount changes update pod checksum annotations. The main Service
+`secretProviderClass`, `secretName`, and TLS `projected` settings are not included
+in that JSON. Config and mount changes update pod checksum annotations. The main Service
 exposes only application TLS on 443. The Pod's TLS operational port 9443 remains
 private for health probes. Use a `PodMonitor` or create a separate Service for
 metrics, and restrict `networkPolicy.metricsIngressFrom` to the collector.

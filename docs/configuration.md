@@ -58,7 +58,7 @@ Credential files and formats are listed in [Deployment](deployment.md).
 
 ## Chart-only values
 
-These control Kubernetes resources and are not runtime JSONC: top-level `enabled`, `crds`, `extraArgs`, `image`, `imagePullSecrets`, naming overrides, `serviceAccount`, `service`, encryption-key and TLS secret sources, `persistence`, resources, Pod/container security contexts, NetworkPolicy, scheduling, and each credential's `secretProviderClass` or `secretName`.
+These control Kubernetes resources and are not runtime JSONC: top-level `enabled`, `crds`, `extraArgs`, `image`, `imagePullSecrets`, naming overrides, `serviceAccount`, `service`, encryption-key and TLS secret sources, `servingTLS.projected`, `persistence`, resources, Pod/container security contexts, NetworkPolicy, scheduling, and each credential's `secretProviderClass` or `secretName`.
 
 Persistence is enabled by default; disabling it uses `emptyDir` storage. The chart does not create an operational Service; use a `PodMonitor` or create a Service when a collector needs one, and restrict `networkPolicy.metricsIngressFrom`. The chart fixes `hostUsers: false`; its UID 0 security context is required for direct access to mounted private files.
 

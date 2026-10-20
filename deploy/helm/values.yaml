@@ -51,6 +51,8 @@ encryptionKey:
 servingTLS:
   secretProviderClass: ""
   secretName: ""
+  # Alternative ProjectedVolumeSource with nonempty sources; defaults to mode 0400.
+  projected: null
   certificateFile: tls.crt
   privateKeyFile: tls.key
 
