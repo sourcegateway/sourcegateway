@@ -9,6 +9,9 @@
 {{- $tlsProjected := default dict .Values.servingTLS.projected -}}
 {{- if ne (len (compact (list $tlsSPC $tlsSecret $tlsProjected))) 1 -}}{{ fail "servingTLS must set exactly one of secretProviderClass, secretName or projected" }}{{- end -}}
 {{- if and $tlsProjected (empty $tlsProjected.sources) -}}{{ fail "servingTLS.projected.sources must not be empty" }}{{- end -}}
+{{- if not (kindIs "bool" .Values.hostUsers) -}}{{ fail "hostUsers must be true or false" }}{{- end -}}
+{{- $runAsUser := dig "runAsUser" nil .Values.podSecurityContext -}}
+{{- if and .Values.hostUsers (or (eq $runAsUser nil) (eq (int $runAsUser) 0) (not (dig "fsGroup" nil .Values.podSecurityContext))) -}}{{ fail "hostUsers=true requires podSecurityContext with a non-zero runAsUser and an fsGroup" }}{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,7 +37,7 @@ spec:
     spec:
       serviceAccountName: {{ include "sourcegateway.serviceAccountName" . }}
       automountServiceAccountToken: true
-      hostUsers: false
+      hostUsers: {{ .Values.hostUsers }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- with .Values.imagePullSecrets }}

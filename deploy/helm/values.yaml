@@ -72,6 +72,13 @@ resources:
 
 podAnnotations: {}
 podLabels: {}
+# false runs UID 0 in a private Pod user namespace (requires idmapped-mount
+# support). true runs without one, for runtimes that cannot join a Pod user
+# namespace such as gVisor; it requires a non-root runAsUser and an fsGroup so
+# mounted credentials remain readable, for example:
+#   hostUsers: true
+#   podSecurityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532}
+hostUsers: false
 podSecurityContext:
   # UID 0 is mapped to a unique unprivileged host UID by spec.hostUsers=false.
   runAsNonRoot: false

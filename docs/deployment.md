@@ -32,7 +32,9 @@ The encryption source must publish `encryption-key` as standard base64 for exact
 
 `awsDefault` uses the AWS SDK default credential provider chain, and `gcsDefault` uses Google Application Default Credentials, so neither kind has credential files. Native Secret and CSI volumes are mounted whole rather than with `subPath`, preserving kubelet and provider rotation. Credentials may declare a trusted `origin`; GitHub, GCS, and regional AWS S3 have safe defaults. A resource cannot send a selected credential to another origin.
 
-The chart uses `hostUsers: false`, so Source Gateway's in-container UID 0 maps to a unique unprivileged host UID. Supported secret mounts expose their private files to that in-container UID without copying or interrupting rotation. This requires Linux 6.3+, containerd 2.0+, runc 1.2+ or crun 1.9+, and idmapped-mount support on every volume filesystem. Do not override the chart's root user settings or schedule it on incompatible nodes.
+By default the chart uses `hostUsers: false`, so Source Gateway's in-container UID 0 maps to a unique unprivileged host UID. Supported secret mounts expose their private files to that in-container UID without copying or interrupting rotation. This requires Linux 6.3+, containerd 2.0+, runc 1.2+ or crun 1.9+, and idmapped-mount support on every volume filesystem.
+
+Runtimes that cannot join a Pod user namespace, such as gVisor, instead set `hostUsers: true` and a non-root `podSecurityContext` with an `fsGroup` (for example UID, GID, and `fsGroup` 65532). Kubelet makes native Secret and projected files group-readable through `fsGroup`, and the chart rejects `hostUsers: true` with UID 0 or without an `fsGroup`.
 
 ## TLS, storage, and networking
 

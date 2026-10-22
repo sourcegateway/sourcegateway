@@ -150,6 +150,15 @@ helm: ## Lint, render, and strictly validate the Helm chart
 	@grep -q '^[[:space:]]*- "--allow-insecure-upstream=http://seaweedfs.sourcegateway.svc:8333"$$' tmp/helm-ephemeral.yaml
 	@grep -q '^[[:space:]]*hostUsers: false$$' tmp/helm.yaml
 	@grep -q '^[[:space:]]*runAsUser: 0$$' tmp/helm.yaml
+	@helm template sourcegateway deploy/helm --kube-version $(KUBERNETES_VERSION) --namespace sourcegateway -f deploy/helm/values-example.yaml \
+		--set hostUsers=true --set podSecurityContext.runAsNonRoot=true --set podSecurityContext.runAsUser=65532 \
+		--set podSecurityContext.runAsGroup=65532 --set podSecurityContext.fsGroup=65532 >tmp/helm-host-users.yaml
+	@grep -q '^[[:space:]]*hostUsers: true$$' tmp/helm-host-users.yaml
+	@grep -q '^[[:space:]]*runAsUser: 65532$$' tmp/helm-host-users.yaml
+	@if helm template sourcegateway deploy/helm --kube-version $(KUBERNETES_VERSION) --namespace sourcegateway -f deploy/helm/values-example.yaml \
+		--set hostUsers=true >/dev/null 2>&1; then echo "expected hostUsers=true with UID 0 rejection" >&2; exit 1; fi
+	@if helm template sourcegateway deploy/helm --kube-version $(KUBERNETES_VERSION) --namespace sourcegateway -f deploy/helm/values-example.yaml \
+		--set hostUsers=true --set podSecurityContext.runAsUser=65532 >/dev/null 2>&1; then echo "expected hostUsers=true without fsGroup rejection" >&2; exit 1; fi
 	@test "$$(grep -c '^[[:space:]]*- name: sourcegateway$$' tmp/helm.yaml)" -eq 1
 	@! grep -q 'secret-projection\|sync-secrets\|CHOWN' tmp/helm.yaml
 	@! grep -q 'secrets-store.csi.k8s.io' tmp/helm-secrets.yaml

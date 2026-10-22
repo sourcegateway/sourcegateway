@@ -23,11 +23,11 @@ The encryption source must publish `encryption-key` containing standard base64
 for 32 bytes. The TLS source must publish `tls.crt` and `tls.key`. Credential
 sources use the filenames documented in the main deployment guide.
 
-The chart sets `hostUsers: false` and runs Source Gateway as UID 0 inside the
-Pod's user namespace. Kubernetes maps that UID to a unique unprivileged host UID
-while supported secret mounts expose their private files to the in-container UID
-without copying or interrupting rotation. Every eligible node must support
-idmapped mounts; do not override the chart's root user settings.
+By default the chart sets `hostUsers: false` and runs Source Gateway as UID 0
+inside the Pod's user namespace, which requires idmapped-mount support on every
+eligible node. For runtimes without Pod user namespaces, such as gVisor, set
+`hostUsers: true` with a non-root `podSecurityContext` that includes an
+`fsGroup`. See the deployment guide for details.
 
 CRDs are disabled by default so their lifecycle can be managed independently.
 Install or upgrade the CRD release first:
