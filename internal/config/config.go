@@ -239,7 +239,7 @@ func validateKind(group, kind string) error {
 	return nil
 }
 
-// secureFiles reads a consistent set of private files from one mounted-secret generation.
+// secureFiles reads regular files confined to one mounted-secret generation.
 func secureFiles(directory string, names []string) (map[string][]byte, error) {
 	root, err := os.OpenRoot(directory)
 	if err != nil {
@@ -273,15 +273,12 @@ func secureFiles(directory string, names []string) (map[string][]byte, error) {
 			return nil, openErr
 		}
 		info, statErr := file.Stat()
-		if statErr != nil || !info.Mode().IsRegular() || info.Mode()&0o077 != 0 {
+		if statErr != nil || !info.Mode().IsRegular() {
 			_ = file.Close()
 			if statErr != nil {
 				return nil, statErr
 			}
-			if !info.Mode().IsRegular() {
-				return nil, errors.New("credential must be a regular file")
-			}
-			return nil, errors.New("file must not be accessible by group or others")
+			return nil, errors.New("credential must be a regular file")
 		}
 		contents, readErr := io.ReadAll(file)
 		closeErr := file.Close()

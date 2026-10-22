@@ -14,8 +14,10 @@ CRDs are disabled by default while Source Gateway is enabled. For independent li
 
 For the encryption key and every file-backed credential, set exactly one source:
 
-- `secretProviderClass` mounts a Secrets Store CSI volume and is preferred. Configure files with mode `0400` and enable automatic rotation.
+- `secretProviderClass` mounts a Secrets Store CSI volume and is preferred. Enable automatic rotation; mode `0400` is recommended where supported, but CSI defaults such as `0644` are accepted.
 - `secretName` mounts a native Kubernetes Secret with mode `0400`. When using native Secrets, enable Kubernetes encryption at rest because their contents are stored in etcd.
+
+Source Gateway does not enforce owner-only file permissions. Restrict access to credential mounts to trusted containers and processes.
 
 Serving TLS requires exactly one of those sources or `servingTLS.projected` (a Kubernetes `ProjectedVolumeSource`).
 

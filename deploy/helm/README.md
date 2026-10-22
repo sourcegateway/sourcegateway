@@ -8,11 +8,12 @@ Kubernetes 1.37 and Linux nodes supporting Pod user namespaces are required.
 
 For the encryption key and each file-backed credential, configure
 exactly one `secretProviderClass` or `secretName`. Secrets Store CSI is preferred;
-enable automatic rotation and configure files with mode `0400`. Native
-Kubernetes Secrets are also mounted with mode `0400`. When using native Secrets,
-enable Kubernetes encryption at rest because their contents are stored in etcd.
-Both volume types are mounted whole, without `subPath`, so file updates remain
-visible.
+enable automatic rotation. Mode `0400` is recommended where supported, but CSI
+defaults such as `0644` are accepted. Restrict credential mounts to trusted
+containers and processes. Native Kubernetes Secrets are also mounted with mode
+`0400`. When using native Secrets, enable Kubernetes encryption at rest because
+their contents are stored in etcd. Both volume types are mounted whole, without
+`subPath`, so file updates remain visible.
 
 For serving TLS, configure exactly one of `servingTLS.secretProviderClass`,
 `servingTLS.secretName`, or `servingTLS.projected` (a Kubernetes

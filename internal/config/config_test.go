@@ -109,15 +109,68 @@ func TestLoadValidatesMaximumObjectSize(t *testing.T) {
 	}
 }
 
-// TestLoadRejectsUnsafeSecretFiles checks permissions and symlink confinement.
+// TestLoadAllowsReadableSecretFiles accepts owner-only, group-readable, and CSI-default modes.
+func TestLoadAllowsReadableSecretFiles(t *testing.T) {
+	for _, mode := range []os.FileMode{0o400, 0o440, 0o644} {
+		t.Run(fmt.Sprintf("%04o", mode), func(t *testing.T) {
+			path, secrets := writeConfigFixture(t)
+			if err := os.Chmod(filepath.Join(secrets, "encryption-key"), mode); err != nil { // #nosec G302 -- exercises supported mounted-secret modes.
+				t.Fatal(err)
+			}
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(cfg.EncryptionKey) != string(make([]byte, 32)) {
+				t.Fatal("encryption key changed while loading")
+			}
+			if err := os.Mkdir(filepath.Join(secrets, "git"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			credentialPath := filepath.Join(secrets, "git", "username")
+			if err := os.WriteFile(credentialPath, []byte("example-user"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(credentialPath, mode); err != nil { // #nosec G302 -- exercises supported mounted-secret modes.
+				t.Fatal(err)
+			}
+			files, err := cfg.ReadCredentialFiles("git", "username")
+			if err != nil || string(files["username"]) != "example-user" {
+				t.Fatalf("credential read returned %v or changed the contents", err)
+			}
+		})
+	}
+}
+
+// TestLoadRejectsInvalidEncryptionKey preserves format and length validation for readable files.
+func TestLoadRejectsInvalidEncryptionKey(t *testing.T) {
+	for _, value := range []string{"not-base64!", base64.StdEncoding.EncodeToString(make([]byte, 31)), base64.StdEncoding.EncodeToString(make([]byte, 33))} {
+		path, secrets := writeConfigFixture(t)
+		keyPath := filepath.Join(secrets, "encryption-key")
+		if err := os.WriteFile(keyPath, []byte(value), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(keyPath, 0o644); err != nil { // #nosec G302 -- ensures content validation is independent of permissions.
+			t.Fatal(err)
+		}
+		if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "standard base64 encoding of exactly 32 bytes") {
+			t.Fatalf("invalid encryption key returned %v", err)
+		}
+	}
+}
+
+// TestLoadRejectsUnsafeSecretFiles checks regular-file validation and symlink confinement.
 func TestLoadRejectsUnsafeSecretFiles(t *testing.T) {
 	path, secrets := writeConfigFixture(t)
 	keyPath := filepath.Join(secrets, "encryption-key")
-	if err := os.Chmod(keyPath, 0o644); err != nil { // #nosec G302 -- deliberately verifies rejection of an unsafe mode.
+	if err := os.Remove(keyPath); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(path); err == nil {
-		t.Fatal("group-readable key unexpectedly accepted")
+	if err := os.Mkdir(keyPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "regular file") {
+		t.Fatalf("nonregular key returned %v", err)
 	}
 	if err := os.Remove(keyPath); err != nil {
 		t.Fatal(err)
