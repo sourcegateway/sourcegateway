@@ -32,3 +32,11 @@ Run `make generate` after changing API types or RBAC markers. It regenerates dee
 ## Builds
 
 `make build` creates `bin/sourcegateway`. Production images are packaging-only builds made with ocimage.
+
+## Releases
+
+Push release commits to `main`, then tag them as `vX.Y.Z`. The release workflow
+requires successful push CI on `main` for that exact commit. Tags pushed while
+CI is queued or running wait up to 30 minutes; failed, cancelled or timed-out CI
+blocks publication. A successful CI run for another commit or a pull request
+does not qualify. After retrying failed CI successfully, rerun the release.

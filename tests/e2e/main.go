@@ -276,15 +276,18 @@ func testPublicGit(ctx context.Context, kubeClient client.Client, clientset kube
 	url := gatewayEndpoint + "/git/agents/public.git"
 	for _, args := range [][]string{{"clone", url, checkout}, {"-C", checkout, "fetch", "origin"}} {
 		args = append([]string{"-c", "http.extraHeader=Authorization: Bearer " + token, "-c", "http.sslCAInfo=" + filepath.Join(root, "ca.crt")}, args...)
-		command := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- fixed test commands with harness-owned paths.
+		command := exec.CommandContext(ctx, "git", args...) // #nosec G204 G702 -- fixed test commands with harness-owned paths and a locally issued token; no shell.
 		server.ConfigureGitCommand(command)
 		if err := command.Run(); err != nil {
 			return fmt.Errorf("read anonymous upstream through gateway: %w", err)
 		}
 	}
-	contents, err := os.ReadFile(filepath.Join(checkout, "README.md")) // #nosec G703 -- checkout is inside the isolated harness directory.
-	if err != nil || string(contents) != "initial\n" {
-		return fmt.Errorf("unexpected anonymous upstream contents %q (read error: %v)", contents, err)
+	contents, err := os.ReadFile(filepath.Join(checkout, "README.md")) // #nosec G304 G703 -- checkout is inside the isolated harness directory.
+	if err != nil {
+		return fmt.Errorf("read anonymous upstream contents: %w", err)
+	}
+	if string(contents) != "initial\n" {
+		return fmt.Errorf("unexpected anonymous upstream contents %q", contents)
 	}
 	otherToken, err := requestToken(ctx, clientset, "other")
 	if err != nil {
