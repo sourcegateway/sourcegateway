@@ -27,21 +27,28 @@ import (
 )
 
 // GitAuthorization builds an HTTP authorization value for a Git upstream.
+// An omitted credential permits anonymous upstream access, not anonymous clients.
 func GitAuthorization(ctx context.Context, cfg *config.Config, name, namespace, upstream string, allowedInsecureUpstreams []string) (string, error) {
-	credential, err := cfg.Credential("gitRepository", name, namespace)
-	if err != nil {
-		return "", err
-	}
 	parsed, err := url.Parse(upstream)
 	if err != nil || parsed.Scheme != "http" && parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", errors.New("upstream must be an HTTP or HTTPS URL without user information")
 	}
 	origin, err := config.NormalizeOrigin(parsed.Scheme + "://" + parsed.Host)
-	if err != nil || origin != credential.Origin {
-		return "", errors.New("upstream origin is not permitted by the selected credential")
+	if err != nil {
+		return "", errors.New("invalid upstream origin")
 	}
 	if parsed.Scheme == "http" && !slices.Contains(allowedInsecureUpstreams, origin) {
 		return "", errors.New("upstream must use HTTPS")
+	}
+	if name == "" {
+		return "", nil
+	}
+	credential, err := cfg.Credential("gitRepository", name, namespace)
+	if err != nil {
+		return "", err
+	}
+	if origin != credential.Origin {
+		return "", errors.New("upstream origin is not permitted by the selected credential")
 	}
 	switch credential.Kind {
 	case "githubUser":

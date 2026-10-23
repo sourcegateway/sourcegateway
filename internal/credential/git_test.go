@@ -116,3 +116,50 @@ func TestGitAuthorizationRequiresHTTPSOrExplicitOrigin(t *testing.T) {
 		t.Fatalf("approved HTTP upstream authorization = %q, %v", authorization, err)
 	}
 }
+
+// TestGitAuthorizationAnonymous validates transport even without a credential.
+func TestGitAuthorizationAnonymous(t *testing.T) {
+	tests := []struct {
+		name     string
+		upstream string
+		allowed  []string
+		wantErr  bool
+	}{
+		{name: "public HTTPS", upstream: "https://github.com/octocat/Hello-World.git"},
+		{name: "HTTP denied", upstream: "http://git.example/repository.git", wantErr: true},
+		{name: "HTTP allowed", upstream: "http://git.example/repository.git", allowed: []string{"http://git.example"}},
+		{name: "different HTTP origin", upstream: "http://git.example/repository.git", allowed: []string{"http://other.example"}, wantErr: true},
+		{name: "userinfo", upstream: "https://user@github.com/repository.git", wantErr: true},
+		{name: "query", upstream: "https://github.com/repository.git?key=value", wantErr: true},
+		{name: "fragment", upstream: "https://github.com/repository.git#main", wantErr: true},
+		{name: "local path", upstream: "/tmp/repository.git", wantErr: true},
+		{name: "file URL", upstream: "file:///tmp/repository.git", wantErr: true},
+		{name: "missing host", upstream: "https:///repository.git", wantErr: true},
+		{name: "invalid port", upstream: "https://github.com:invalid/repository.git", wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			header, err := GitAuthorization(t.Context(), &config.Config{}, "", "agents", test.upstream, test.allowed)
+			if (err != nil) != test.wantErr || header != "" {
+				t.Fatalf("authorization = %q, %v; want empty header, error=%t", header, err, test.wantErr)
+			}
+		})
+	}
+}
+
+// TestGitAuthorizationDoesNotFallBackToAnonymous keeps named credentials fail-closed.
+func TestGitAuthorizationDoesNotFallBackToAnonymous(t *testing.T) {
+	cfg := &config.Config{CredentialsDirectory: t.TempDir(), Credentials: config.Credentials{GitRepository: map[string]config.Credential{
+		"github": {Kind: "githubUser", Namespaces: []string{"agents"}, Origin: "https://github.com"},
+	}}}
+	for _, test := range []struct{ name, namespace string }{
+		{name: "missing", namespace: "agents"},
+		{name: "github", namespace: "other"},
+		{name: "github", namespace: "agents"}, // Configured, but its files are missing.
+	} {
+		header, err := GitAuthorization(t.Context(), cfg, test.name, test.namespace, "https://github.com/octocat/Hello-World.git", nil)
+		if err == nil || header != "" {
+			t.Fatalf("credential %q in namespace %q returned %q, %v", test.name, test.namespace, header, err)
+		}
+	}
+}

@@ -96,17 +96,19 @@ spec:
                 - refreshInterval
                 type: object
               upstream:
-                description: GitUpstream identifies the repository and credential
+                description: GitUpstream identifies the repository and optional credential
                   used to reach it.
                 properties:
                   credential:
+                    description: |-
+                      Credential names an operator-configured credential. Omit it for anonymous
+                      upstream access; clients still require authentication and authorization.
                     minLength: 1
                     type: string
                   url:
                     pattern: ^https?://.+
                     type: string
                 required:
-                - credential
                 - url
                 type: object
             required:

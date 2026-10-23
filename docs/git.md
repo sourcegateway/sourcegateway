@@ -20,6 +20,33 @@ git -c "http.extraHeader=Authorization: Bearer $TOKEN" -C application fetch orig
 
 Both discovery and fetch require `git.read`. Reads cover the whole repository; policies do not make individual branches confidential. After a refresh failure, an unchanged mirror may continue serving until `maxStaleness`; an older mirror is unavailable. Successful pushes through Source Gateway update the local mirror before success is reported, so this limit mainly bounds changes made directly upstream.
 
+## Public upstreams
+
+Omit `spec.upstream.credential` when the upstream allows anonymous Git access. No credential configuration or secret mount is needed for that repository:
+
+```yaml
+apiVersion: sourcegateway.dev/v1alpha1
+kind: GitRepository
+metadata:
+  name: hello-world
+  namespace: agents
+spec:
+  upstream:
+    url: https://github.com/octocat/Hello-World.git
+  mirror:
+    refreshInterval: 5m
+    maxStaleness: 1h
+  authorization:
+    rules:
+      - name: agent-read
+        operations: [git.read]
+        allow: sa.namespace == "agents" && sa.name == "agent"
+```
+
+Anonymous **upstream** access does not permit anonymous **client** access: clients still need a valid ServiceAccount token and a matching policy, even when the mirror is cached. HTTPS remains required unless the operator explicitly permits the exact HTTP origin. URLs cannot embed credentials, query parameters or fragments. Restrict who may edit source resources and the gateway's network egress: an anonymous upstream has no credential-origin allowlist.
+
+For a private upstream, set `spec.upstream.credential` to an operator-configured credential name. Invalid, unavailable or namespace-disallowed named credentials fail closed; they never fall back to anonymous access. Removing a credential does not purge already cached repository data; source policies and mirror freshness still govern reads. Pushes always require `git.push` authorization and acceptance by the upstream, whether or not an upstream credential is configured.
+
 ## Push policy
 
 Add a `git.push` rule to permit selected branch changes:

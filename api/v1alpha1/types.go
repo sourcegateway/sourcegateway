@@ -67,12 +67,15 @@ type GitRepositorySpec struct {
 	Authorization GitAuthorization `json:"authorization"`
 }
 
-// GitUpstream identifies the repository and credential used to reach it.
+// GitUpstream identifies the repository and optional credential used to reach it.
 type GitUpstream struct {
 	// +kubebuilder:validation:Pattern=`^https?://.+`
 	URL string `json:"url"`
+	// Credential names an operator-configured credential. Omit it for anonymous
+	// upstream access; clients still require authentication and authorization.
+	// +optional
 	// +kubebuilder:validation:MinLength=1
-	Credential string `json:"credential"`
+	Credential string `json:"credential,omitempty"`
 }
 
 // GitMirror controls mirror freshness.

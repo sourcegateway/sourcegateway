@@ -28,6 +28,7 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/sourcegateway/sourcegateway/api/v1alpha1"
 	"github.com/sourcegateway/sourcegateway/internal/controller"
+	"github.com/sourcegateway/sourcegateway/internal/server"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -93,7 +94,7 @@ func run(parent context.Context, arguments []string) error {
 			return fmt.Errorf("trigger reconcile: %w", err)
 		}
 		if arguments[0] == "slow-refresh" {
-			return waitGitGeneration(ctx, kubeClient, repository.Generation)
+			return waitGitGeneration(ctx, kubeClient, repository.Name, repository.Generation)
 		}
 		return nil
 	}
@@ -133,10 +134,10 @@ func cleanup(ctx context.Context, kubeClient client.Client) error {
 }
 
 // waitGitGeneration waits until a repository reports a ready generation.
-func waitGitGeneration(ctx context.Context, kubeClient client.Client, generation int64) error {
+func waitGitGeneration(ctx context.Context, kubeClient client.Client, name string, generation int64) error {
 	for {
 		var repository v1alpha1.GitRepository
-		err := kubeClient.Get(ctx, types.NamespacedName{Namespace: "agents", Name: "application"}, &repository)
+		err := kubeClient.Get(ctx, types.NamespacedName{Namespace: "agents", Name: name}, &repository)
 		if err == nil && repository.Status.ObservedGeneration >= generation && ready(repository.Status.Conditions) {
 			return nil
 		}
@@ -246,7 +247,80 @@ func bootstrap(ctx context.Context, kubeClient client.Client, clientset kubernet
 	if err := os.WriteFile(filepath.Join(root, "bucket-name"), []byte(bucketName), 0o600); err != nil { // #nosec G703 -- root is the test harness-owned DEV_ROOT.
 		return fmt.Errorf("write bucket name: %w", err)
 	}
+	if err := testPublicGit(ctx, kubeClient, clientset, token); err != nil {
+		return err
+	}
 	return testS3(ctx, token, bucketName)
+}
+
+// testPublicGit clones an anonymous upstream while enforcing client identity and policy.
+func testPublicGit(ctx context.Context, kubeClient client.Client, clientset kubernetes.Interface, token string) error {
+	repository := &v1alpha1.GitRepository{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "public"},
+		Spec: v1alpha1.GitRepositorySpec{
+			Upstream: v1alpha1.GitUpstream{URL: "https://127.0.0.1:9443/application.git"},
+			Mirror:   v1alpha1.GitMirror{RefreshInterval: metav1.Duration{Duration: time.Second}, MaxStaleness: metav1.Duration{Duration: time.Minute}},
+			Authorization: v1alpha1.GitAuthorization{Rules: []v1alpha1.GitAuthorizationRule{
+				{Name: "read", Operations: []string{"git.read"}, Allow: `sa.namespace == "agents" && sa.name == "agent"`},
+			}},
+		},
+	}
+	if err := kubeClient.Create(ctx, repository); err != nil {
+		return fmt.Errorf("create anonymous upstream: %w", err)
+	}
+	if err := waitGitGeneration(ctx, kubeClient, repository.Name, repository.Generation); err != nil {
+		return err
+	}
+	root := os.Getenv("DEV_ROOT")
+	checkout := filepath.Join(root, "public-clone")
+	url := gatewayEndpoint + "/git/agents/public.git"
+	for _, args := range [][]string{{"clone", url, checkout}, {"-C", checkout, "fetch", "origin"}} {
+		args = append([]string{"-c", "http.extraHeader=Authorization: Bearer " + token, "-c", "http.sslCAInfo=" + filepath.Join(root, "ca.crt")}, args...)
+		command := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- fixed test commands with harness-owned paths.
+		server.ConfigureGitCommand(command)
+		if err := command.Run(); err != nil {
+			return fmt.Errorf("read anonymous upstream through gateway: %w", err)
+		}
+	}
+	contents, err := os.ReadFile(filepath.Join(checkout, "README.md")) // #nosec G703 -- checkout is inside the isolated harness directory.
+	if err != nil || string(contents) != "initial\n" {
+		return fmt.Errorf("unexpected anonymous upstream contents %q (read error: %v)", contents, err)
+	}
+	otherToken, err := requestToken(ctx, clientset, "other")
+	if err != nil {
+		return err
+	}
+	// A warm public mirror must still reject unauthenticated or disallowed clients.
+	for _, test := range []struct {
+		name   string
+		token  string
+		status int
+	}{
+		{name: "allowed", token: token, status: http.StatusOK},
+		{name: "unauthenticated", status: http.StatusUnauthorized},
+		{name: "policy denied", token: otherToken, status: http.StatusForbidden},
+	} {
+		httpClient, err := newTestHTTPClient(test.token, true)
+		if err != nil {
+			return err
+		}
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, url+"/info/refs?service=git-upload-pack", nil)
+		if err != nil {
+			return err
+		}
+		response, err := httpClient.Do(request)
+		if err != nil {
+			return fmt.Errorf("public Git %s request: %w", test.name, err)
+		}
+		_, readErr := io.Copy(io.Discard, response.Body)
+		if err := errors.Join(readErr, response.Body.Close()); err != nil {
+			return err
+		}
+		if response.StatusCode != test.status {
+			return fmt.Errorf("public Git %s returned %d, want %d", test.name, response.StatusCode, test.status)
+		}
+	}
+	return kubeClient.Delete(ctx, repository)
 }
 
 // testS3 exercises allowed, ranged, copied, denied, and deleted objects.

@@ -13,7 +13,7 @@ Both namespaced resources use `apiVersion: sourcegateway.dev/v1alpha1` and share
 | Field | Meaning |
 | --- | --- |
 | `spec.upstream.url` | Git smart HTTP repository URL. HTTPS is required unless the process permits that exact HTTP origin. |
-| `spec.upstream.credential` | Name in runtime `credentials.gitRepository`, permitted for this namespace. |
+| `spec.upstream.credential` | Optional name in runtime `credentials.gitRepository`, permitted for this namespace. Omit for anonymous upstream access; client authentication and source policy still apply. A supplied name must resolve successfully. |
 | `spec.mirror.refreshInterval` | Positive periodic mirror refresh interval. |
 | `spec.mirror.maxStaleness` | Positive maximum age that may serve reads; gateway pushes update the mirror immediately. |
 | `spec.authorization.rules` | Rules using `git.read` and/or `git.push`. |
